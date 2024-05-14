@@ -1,0 +1,276 @@
+Create a new VM 
+create hduser in it. Provide sudo permissions to hduser.
+update it. Install openjdk-8-jdk on it.
+Create directory /usr/local/hadoop 
+make hduser as the owner of this directory.
+Find the IP address of this machine.
+Change the hostname to master2.
+
+
+
+On the main namenode perform following steps.
+Modify /etc/hosts file to add entry for master2.
+
+Copy ssh key to master2 for passwordless SSH.
+
+Download Zookeeper in hduser home directory
+wget https://archive.apache.org/dist/zookeeper/zookeeper-3.4.6/zookeeper-3.4.6.tar.gz
+
+extract it
+tar xvzf zookeeper-3.4.6.tar.gz
+
+Edit .bashrc file and add foolowing lines.
+export ZOOKEEPER_HOME = /home/hduser/zookeeper-3.4.6
+export PATH=$PATH:$ZOOKEEPER_HOME/bin
+save the file.
+
+source ~/.bashrc
+
+Open core-site.xml on active name node and add the following contents.
+
+<configuration>
+<property>
+<name>fs.defaultFS</name>
+<value>hdfs://ha-cluster</value>
+</property>
+<property>
+<name>dfs.journalnode.edits.dir</name>
+<value>/usr/local/hadoop/hd-data/jn</value>
+</property>
+</configuration>
+Save the file.
+
+Edit hdfs-site.xml and add following.
+
+<configuration>
+<property>
+<name>dfs.name.dir</name>
+<value>/usr/local/hadoop/hd-data/nn</value>
+</property>
+<property>
+<name>dfs.replication</name>
+<value>2</value>
+</property>
+<property>
+<name>dfs.secondary.http.address</name>
+<value>snn:9869</value>
+</property>
+<property>
+<name>dfs.permissions</name>
+ <value>false</value>
+ </property>
+ <property>
+ <name>dfs.nameservices</name>
+ <value>ha-cluster</value>
+ </property>
+ <property>
+ <name>dfs.ha.namenodes.ha-cluster</name>
+ <value>master,master2</value>
+ </property>
+ <property>
+ <name>dfs.namenode.rpc-address.ha-cluster.master</name>
+ <value>master:9000</value>
+ </property>
+ <property>
+ <name>dfs.namenode.rpc-address.ha-cluster.master2</name>
+ <value>master2:9000</value>
+ </property>
+ <property>
+ <name>dfs.namenode.http-address.ha-cluster.master</name>
+ <value>master:50070</value>
+ </property>
+ <property>
+ <name>dfs.namenode.http-address.ha-cluster.master2</name>
+ <value>master2:50070</value>
+ </property>
+<property>
+ <name>dfs.namenode.shared.edits.dir</name>
+ <value>qjournal://master:8485;master2:8485;DN1:8485/ha-cluster</value>
+ </property>
+ <property>
+ <name>dfs.client.failover.proxy.provider.ha-cluster</name>
+ <value>org.apache.hadoop.hdfs.server.namenode.ha.ConfiguredFailoverProxyProvider</value>
+ </property>
+ <property>
+ <name>dfs.ha.automatic-failover.enabled</name>
+ <value>true</value>
+ </property>
+ <property>
+ <name>ha.zookeeper.quorum</name>
+ <value> master:2181,master2:2181,DN1:2181 </value>
+ </property>
+ <property>
+ <name>dfs.ha.fencing.methods</name>
+ <value>shell(/bin/true)</value>
+ </property>
+# <property>
+# <name>dfs.ha.fencing.ssh.private-key-files</name>
+# <value>/home/hduser/.ssh/id_rsa</value>
+# </property>
+</configuration>
+
+Save the file.
+
+cd zookeeper-3.4.6/conf
+
+cp zoo_sample.cfg zoo.cfg
+
+mkdir -p ~/data/zookeeper
+
+edit the zoo.cfg file.
+
+change following
+dataDir=/home/hduser/data/zookeeper
+and add following entries
+server.1=master:2888:3888
+server.2=master2:2888:3888
+server.3=DN1:2888:3888
+
+save the file.
+
+vi ~/data/zookeeper/myid
+add number 1 and save the file.
+
+Now copy the core-site.xml and hdfs-site.xml to all nodes.
+
+scp /usr/local/hadoop/etc/hadoop/core-site.xml  hduser@DN1:/usr/local/hadoop/etc/hadoop
+
+scp /usr/local/hadoop/etc/hadoop/core-site.xml  hduser@DN2:/usr/local/hadoop/etc/hadoop
+
+scp /usr/local/hadoop/etc/hadoop/hdfs-site.xml  hduser@DN1:/usr/local/hadoop/etc/hadoop
+
+scp /usr/local/hadoop/etc/hadoop/hdfs-site.xml  hduser@DN2:/usr/local/hadoop/etc/hadoop
+
+also copy .bashrc file
+scp ~/.bashrc  hduser@DN1:/home/hduser
+scp ~/.bashrc  hduser@master2:/home/hduser
+
+
+rsync -a /usr/local/hadoop/ hduser@master2:/usr/local/hadoop/
+
+rsync -a ~/zookeeper-3.4.6  hduser@DN1:/home/hduser/
+
+rsync -a ~/zookeeper-3.4.6  hduser@master2:/home/hduser/
+
+scp /etc/hosts hduser@master2:/home/hduser
+
+ssh DN1
+edit /etc/hosts file to add entry for master2
+mkdir -p data/zookeeper
+vi data/zookeeper/myid
+add number 3 and save the file.
+edit /usr/local/hadoop/etc/hadoop/hdfs-site.xml
+add following
+<property>
+<name>dfs.data.dir</name>
+<value>/usr/local/hadoop/hd-data/dn</value>
+</property>
+save the file.
+exit
+
+ssh DN2
+edit /etc/hosts file to add entry for master2
+edit /usr/local/hadoop/etc/hadoop/hdfs-site.xml
+add following
+<property>
+<name>dfs.data.dir</name>
+<value>/usr/local/hadoop/hd-data/dn</value>
+</property>
+save the file.
+exit
+
+ssh master2
+sudo cp hosts /etc/hosts
+mkdir -p  data/zookeeper
+vi data/zookeeper/myid
+add number 2 and save the file.
+exit
+
+On the main name node start journalnode using following command
+
+hdfs --daemon start journalnode
+
+check with jps.
+
+Format the namenode
+hdfs namenode -format
+
+Start the name node service
+
+hdfs --daemon start namenode
+
+check with jps
+
+Once the namenode starts copy the matadata to standby namenode.
+
+ssh master2
+hdfs namenode -bootstrapStandby
+
+Once the process completes, start namenode service on master2.
+
+hdfs -daemon start namenode
+
+exit
+
+
+Now start zookeeper service on all nodes (master,master2 and DN1)
+After running the Zookeeper server, enter JPS command. In all the nodes you will see the QuorumPeerMain service.
+
+zkServer.sh start
+jps
+
+ssh master2
+zkServer.sh start
+jps
+exit
+
+ssh DN1
+zkServer.sh start
+jps
+exit
+
+Start the Zookeeper fail over controller in Active name node and standby name node.
+
+Format the zookeeper fail over controller in Active namenode.
+
+hdfs zkfc –formatZK
+
+hdfs --daemon start zkfc
+
+jps
+
+ssh master2
+
+hdfs zkfc –formatZK
+
+hdfs --daemon start zkfc
+
+jps
+
+exit
+
+check namenode status with
+
+hdfs haadmin –getServiceState master
+hdfs haadmin –getServiceState master2
+
+open browser and go to master:50070 and master2:50070
+
+create some data on hdfs
+
+kill namenode on main active node.
+
+check if the standby node becomes active?
+Are you able to access the data??
+
+
+
+
+
+
+
+
+
+
+
+
