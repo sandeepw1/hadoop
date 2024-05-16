@@ -1,0 +1,208 @@
+Open LDAP and Kerberos
+
+1. yum install kr5-server -y
+
+2. edit /etc/krb5.conf
+   uncomment all lines.
+   change the default realm to demo.lab
+
+%s/example.com/demo.lab/
+%s/EXAMPLE.COM/DEMO.LAB/
+
+change kds = "your server name(FQDN)"
+       admin_server = "your server name(FQDN)"
+save the file.
+
+3. Edit /var/kerberos/krb5kdc/kdc.conf
+
+ 	Change realm from EXAMPLE.COM to DEMO.LAB
+Save the file.
+
+4. Edit /var/kerberos/krb5kdc/kadm5.acl
+	Change from example.com to demo.lab
+save the file.
+
+5. Create the krb5 database
+   kdb5_util create -s -r demo.lab 
+Enter KDC database master key (Remember it)
+
+6. Enable and start kadmin and krb5 service
+	systemctl enable kadmin
+	systemctl start kadmin
+        systemctl enable krb5kdc
+        systemctl start krb5kdc
+
+7. Verify the services are running.
+	systemctl status kadmin
+	systemctl status krb5kdc
+
+8. Open kerberos service in firewalld
+        firewall-cmd --add-service=kerberos
+        firewall-cmd --add-service=kerberos --permanent
+
+9. Create a user principle for the admin user.
+       kadmin.local
+       addprinc  root/admin
+       Type password for the user
+
+Similarly add principle for other hosts also.
+	addprinc -randkey host/master.demo.lab
+	addprinc -randkey host/client.demo.lab
+
+Create keytab for the above principles.
+	ktadd -k /tmp/master.keytab host/master.demo.lab
+        ktadd -k /tmp/client.keytab host/client.demo.lab
+
+Check by using 
+        listprincs
+        quit
+
+Now copy /etc/krb5.conf and master.keytab to master
+    copy /etc/krb5.conf and client.keytab to client
+
+Now go to master machine
+
+yum install pam_krb5 krb5-workstation -y
+
+copy above krb5.conf to /etc/
+Then add the keytab file
+	ktutil
+       rkt /home/hduser/master.keytab
+       wkt /etc/krb5.keytab
+       list
+Perform these steps on other client also.
+
+Install Open LDAP 
+
+Go to kerberos server
+
+1. yum install openldap-servers openldap-clients migrationtools -y
+
+Once packages are installed
+
+2. cp /usr/share/openldap-servers/DB_CONFIG.example  /var/lib/ldap/DB_CONFIG
+
+3. chown -R ldap. /var/lib/ldap
+
+4. generate password for LDAP manager
+    slappasswd
+    copy password including {ssha}
+
+5. cd /etc/openldap/slap.d/cn\ config
+6. vi olcDatabase\-\{0\}config.ldif
+	add 
+       olcRootPW: paste-copied-password
+save the file.
+7. vi olcDatabase\-\{2\}hdb.ldif
+      change domain name in olcRootDN
+      Then add 
+      olcRootPW: paste-copied-password
+At rhe end add
+      olcAccess: {0}to attrs=userPassword by self write by dn.base="cn=manager,dc=demo,dc=lab" write by anonymous auth by * none
+      olcAccess: {1}to * by dn.base="cn=manager,dc=demo,dc=lab" write by self write by * read 
+
+save the file.
+
+8.  vi olcDatabase\-\{1\}monitor.ldif 
+
+    change the domain name. 
+save the file
+
+9. Enable and start the service
+
+    systemctl enable slapd
+    systemctl start slapd
+
+check with netstat -pltn if port 389 is open.
+
+10. Open port in firewall.
+	firewall-cmd --add-service=ldap 
+         firewall-cmd --add-service=ldap --permanent
+
+11. Import ldap schema's to create accounts.
+	ls -l /etc/openldap/schema
+    ldapadd -Y EXTERNAL -H ldapi:/// -f /etc/openldap/schema/cosine.ldif
+    ldapadd -Y EXTERNAL -H ldapi:/// -f /etc/openldap/schema/nis.ldif
+    ldapadd -Y EXTERNAL -H ldapi:/// -f /etc/openldap/schema/inetorgperson.ldif
+
+12. vi base.ldif 
+      type following in it
+       
+       dn: dc=demo,dc=lab
+       objectClass: dcobject
+       objectClass: organization
+       dc: demo
+       dc: lab
+
+       dn: ou=people,dc=demo,dc=lab
+       objectClass: organizationalUnit
+       ou: people
+
+       dn: ou=Group,dc=demo,dc=lab
+       objectClass: organizationalUnit
+       ou: Group
+
+      save the file.
+
+ 13. ldapadd -x -D cn=Manager,dc=demo,dc=lab -W -f base.ldif
+
+ 14. ldapsearch -x -D cn=Manager,dc=demo,dc=lab -W -b dc=demo,dc=lab
+
+
+15. Create users in Linux machine.
+
+        useradd hadoop1
+        useradd hadoop2
+
+16. cd /usr/share/migrationtools
+      vi migrate_common.ph
+      search padl
+      change it to demo.lab
+     Change EXTENDED_SCHEMA = 1
+
+     Save the file.
+
+17. grep hadoop /etc/passwd > /tmp/users
+    grep hadoop2 /etc/group > /tmp/groups 
+    
+    ./migrate_password.pl /tmp/users /tmp/users.ldif
+    ./migrate_group.pl /tmp/groups /tmp/groups.ldif
+
+18. ldapadd -x -D cn=manager,dc=demo,dc=lab -W -f /tmp/groups.ldif
+
+    ldapadd -x -D cn=manager,dc=demo,dc=lab -W -f /tmp/users.ldif
+
+19. Create kerberos principle for above users
+       kadmin.local
+       addprinc hadoop1
+       Enter password
+
+       addprinc hadoop2
+       Enter password
+
+
+20. Go to master and client.
+    yum install nss-pam-ldapd
+
+    authconfig-tui
+
+    Select LDAP and kerberos for authentication
+     server ldap://server-ip
+     BAse DN: dc=demo,dc=local
+20.  check with id hadoop1 and id hadoop2
+
+21. on master and client edit /etc/ssh/ssh_config
+
+       change 
+            GSSAPIAuthentication yes
+            GSSAPIDelegateCredentials yes
+     save the file.
+
+      same for /etc/sshd_config file.
+
+
+
+
+
+
+
