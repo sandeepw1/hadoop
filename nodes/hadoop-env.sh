@@ -428,3 +428,20 @@ export HADOOP_OS_TYPE=${HADOOP_OS_TYPE:-$(uname -s)}
 # By default, Hadoop uses jsvc which needs to know to launch a
 # server jvm.
 # export HADOOP_REGISTRYDNS_SECURE_EXTRA_OPTS="-jvm server"
+#JAVA
+export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64/
+export JRE_HOME=/usr/lib/jvm/java-8-openjdk-amd64/jre
+#Hadoop Environment Variables
+export HADOOP_HOME=/usr/local/hadoop
+export HADOOP_CONF_DIR=/usr/local/hadoop/etc/hadoop
+export HADOOP_LOG_DIR=$HADOOP_HOME/logs
+export HDFS_NAMENODE_USER=hduser
+export HDFS_DATANODE_USER=hduser
+export HDFS_SECONDARYNAMENODE_USER=hduser
+export YARN_RESOURCEMANAGER_USER=hduser
+export YARN_NODEMANAGER_USER=hduser
+export YARN_NODEMANAGER_USER=hduser
+# Add Hadoop bin/ directory to PATH
+export PATH=$PATH:$HADOOP_HOME/sbin:$HADOOP_HOME/bin
+export HADOOP_COMMON_LIB_NATIVE_DIR=$HADOOP_HOME/lib/native
+export HADOOP_OPTS="-Djava.library.path=$HADOOP_HOME/lib/native"
